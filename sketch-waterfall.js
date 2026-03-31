@@ -1,6 +1,8 @@
 /**
  * Color waterfall — falling HSB stream with mouse/touch “splash” response,
  * plus alchemical sparks and ring bursts when the stream is disturbed.
+ * Custom umbrella cursor (drawn; OS cursor hidden on this slide).
+ * Double-click / double-tap: mega splash (bigger burst, sparks, rings, stream jostle).
  */
 window.motionSketches = window.motionSketches || {};
 window.motionSketches.waterfall = new p5((p) => {
@@ -14,6 +16,10 @@ window.motionSketches.waterfall = new p5((p) => {
   let bursts = [];
   let pmouse = { x: 0, y: 0 };
   let huePhase = 0;
+  let lastMegaAt = 0;
+  let lastTapT = 0;
+  let lastTapX = 0;
+  let lastTapY = 0;
 
   function spawnStream(i) {
     const col = (i * 0.73) % p.width;
@@ -39,21 +45,75 @@ window.motionSketches.waterfall = new p5((p) => {
     }
     pmouse.x = p.mouseX;
     pmouse.y = p.mouseY;
+    p.cursor("none");
   };
 
-  function pushSplash(x, y, hue, mdx, mdy) {
+  function pushSplash(x, y, hue, mdx, mdy, mega) {
     if (splashes.length >= SPLASH_CAP) return;
-    const n = p.floor(p.random(5, 13));
+    const n = mega ? p.floor(p.random(34, 56)) : p.floor(p.random(5, 13));
+    const spread = mega ? 24 : 5;
+    const vm = mega ? 1.9 : 1;
     for (let k = 0; k < n; k++) {
+      const life0 = mega ? p.random(52, 95) : p.random(32, 62);
       splashes.push({
-        x: x + p.random(-5, 5),
-        y: y + p.random(-5, 5),
-        vx: p.random(-9, 9) + mdx * 0.16,
-        vy: p.random(-13, 4) + mdy * 0.16,
-        life: p.random(32, 62),
-        r: p.random(1.4, 5),
+        x: x + p.random(-spread, spread),
+        y: y + p.random(-spread, spread),
+        vx: (p.random(-9, 9) + mdx * 0.16) * vm,
+        vy: (p.random(-15, 5) + mdy * 0.16) * vm,
+        life: life0,
+        maxLife: life0,
+        r: mega ? p.random(2.4, 8.5) : p.random(1.4, 5),
         hue: (hue + p.random(-25, 25)) % 360,
       });
+    }
+  }
+
+  function megaSplash(cx, cy) {
+    const now = p.millis();
+    if (now - lastMegaAt < 420) return;
+    lastMegaAt = now;
+
+    let pickHue = (huePhase * 40 + 200) % 360;
+    let bestD = 1e9;
+    for (let i = 0; i < stream.length; i++) {
+      const dd = p.dist(stream[i].x, stream[i].y, cx, cy);
+      if (dd < bestD) {
+        bestD = dd;
+        pickHue = stream[i].hue;
+      }
+    }
+
+    const mdx = cx - pmouse.x;
+    const mdy = cy - pmouse.y;
+    const kickX = p.abs(mdx) > 0.2 ? mdx * 2.2 : p.random(-6, 6);
+    const kickY = p.abs(mdy) > 0.2 ? mdy * 2.2 : p.random(-8, 2);
+
+    for (let w = 0; w < 4; w++) {
+      pushSplash(
+        cx + p.random(-18, 18),
+        cy + p.random(-14, 14),
+        pickHue,
+        kickX,
+        kickY,
+        true
+      );
+    }
+
+    pushSparks(cx, cy, pickHue, kickX, kickY, 45);
+    for (let b = 0; b < 4; b++) {
+      pushBurst(cx + p.random(-28, 28), cy + p.random(-22, 22), pickHue);
+    }
+
+    for (let i = 0; i < stream.length; i++) {
+      const o = stream[i];
+      const d = p.dist(o.x, o.y, cx, cy);
+      if (d < 160) {
+        const f = p.map(d, 0, 160, 1, 0, true);
+        const nx = d > 0.5 ? (o.x - cx) / d : p.random(-1, 1);
+        const ny = d > 0.5 ? (o.y - cy) / d : p.random(-1, 1);
+        o.vx += nx * f * 7.5 + p.random(-2.5, 2.5);
+        o.vy += ny * f * 6.2 + p.random(-2.5, 2.5);
+      }
     }
   }
 
@@ -76,6 +136,40 @@ window.motionSketches.waterfall = new p5((p) => {
         w: p.random(0.9, 2.8),
       });
     }
+  }
+
+  /** Umbrella cursor — canopy above the hand; pointer sits at the grip / crook. */
+  function drawUmbrellaCursor(mx, my) {
+    const h = (huePhase * 45 + 285) % 360;
+    const cy = -36;
+    p.push();
+    p.translate(mx, my);
+    p.colorMode(p.HSB, 360, 100, 100, 100);
+    p.strokeCap(p.ROUND);
+
+    p.stroke(0, 0, 62);
+    p.strokeWeight(2);
+    p.line(0, 0, 0, 9);
+    p.strokeWeight(1.85);
+    p.line(0, 9, 0, cy);
+
+    p.fill(h, 44, 100, 92);
+    p.stroke(h, 62, 72, 88);
+    p.strokeWeight(1.35);
+    p.arc(0, cy, 54, 46, p.PI, p.TWO_PI, p.PIE);
+
+    p.stroke(0, 0, 100, 24);
+    p.strokeWeight(1);
+    p.noFill();
+    for (let i = -3; i <= 3; i++) {
+      const tx = i * 6.2;
+      p.line(0, cy, tx * 0.92, cy - 16 - p.abs(i) * 0.35);
+    }
+    p.stroke(h, 38, 100, 50);
+    p.strokeWeight(0.9);
+    p.arc(0, cy, 54, 46, p.PI, p.TWO_PI, p.OPEN);
+
+    p.pop();
   }
 
   function pushBurst(x, y, hue) {
@@ -159,7 +253,7 @@ window.motionSketches.waterfall = new p5((p) => {
       s.y += s.vy;
       s.vx *= 0.94;
       s.life -= 1;
-      const a = p.map(s.life, 0, 65, 0, 100, true);
+      const a = p.map(s.life, 0, s.maxLife || 65, 0, 100, true);
       p.fill(s.hue, 98, 100, a);
       p.circle(s.x, s.y, s.r * (0.6 + s.life * 0.01));
       if (s.life <= 0) {
@@ -209,6 +303,26 @@ window.motionSketches.waterfall = new p5((p) => {
 
     p.fill(0, 0, 100, 3);
     p.rect(0, 0, p.width, p.height);
+
+    drawUmbrellaCursor(mx, my);
+  };
+
+  p.doubleClicked = () => {
+    megaSplash(p.mouseX, p.mouseY);
+    return false;
+  };
+
+  p.touchEnded = () => {
+    const now = p.millis();
+    const x = p.mouseX;
+    const y = p.mouseY;
+    if (now - lastTapT < 420 && p.dist(x, y, lastTapX, lastTapY) < 55) {
+      megaSplash(x, y);
+    }
+    lastTapT = now;
+    lastTapX = x;
+    lastTapY = y;
+    return false;
   };
 
   p.windowResized = () => {

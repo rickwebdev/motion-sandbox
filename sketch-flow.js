@@ -1,9 +1,10 @@
 /**
  * Flow — particles swarm the cursor; staying still builds “dwell” so the pull
- * consolidates into a tighter, brighter cluster.
+ * consolidates into a tighter, brighter cluster. The longer you hover without
+ * moving, the faster dwell ramps up (accelerating consolidation).
  *
- * Disperse: double-click / double-tap, or Space — burst outward from the pointer,
- * then swirl returns (dwell resets).
+ * Disperse: double-click / double-tap, or Space — slams the swarm outward and injects
+ * new colored particles that join the same physics and consolidate on hover (dwell resets).
  */
 window.motionSketches = window.motionSketches || {};
 window.motionSketches.flow = new p5((p) => {
@@ -13,6 +14,8 @@ window.motionSketches.flow = new p5((p) => {
   let t = 0;
   /** 0–1: how long the pointer has stayed roughly still (builds consolidation). */
   let dwell = 0;
+  /** Consecutive frames with little movement — drives faster dwell gain over time. */
+  let stillStreak = 0;
   /** Frames left in dispersal phase (repel + damped pull). */
   let disperseTimer = 0;
   let lastDispenseAt = 0;
@@ -21,7 +24,52 @@ window.motionSketches.flow = new p5((p) => {
   let lastTapY = 0;
 
   function particleCount() {
-    return p.width < 600 ? 1650 : 2900;
+    return p.width < 600 ? 2100 : 3600;
+  }
+
+  function burstSpawnCount() {
+    return p.width < 600 ? 1100 : 2600;
+  }
+
+  function maxParticleTotal() {
+    return p.width < 600 ? 9500 : 14500;
+  }
+
+  function trimParticlesToMax() {
+    const cap = maxParticleTotal();
+    while (particles.length > cap) {
+      particles.splice(p.floor(p.random(particles.length)), 1);
+    }
+  }
+
+  /** Soft gradient “brush” + rings; hue warms as dwell builds, pulses on disperse. */
+  function drawFlowCursor(mx, my) {
+    const burstPhase = disperseTimer / DISPERSE_DURATION;
+    const pulse =
+      disperseTimer > 0 ? 1 + 0.14 * p.sin(p.frameCount * 0.35) * burstPhase : 1;
+    const ch = (t * 38 + dwell * 95 + 195) % 360;
+    const baseR = 24 * pulse;
+
+    p.push();
+    p.noStroke();
+    for (let i = 6; i >= 0; i--) {
+      const u = i / 6;
+      const rad = baseR * (0.32 + u * 0.68);
+      const a = 6 + u * 32 + dwell * 12;
+      p.fill((ch + u * 18) % 360, 48 + dwell * 38, 100, a);
+      p.circle(mx, my, rad * 2);
+    }
+    p.stroke((ch + 35) % 360, 50 + dwell * 35, 100, 58 + dwell * 28);
+    p.strokeWeight(1.35);
+    p.noFill();
+    p.circle(mx, my, baseR * 1.72);
+    p.stroke(0, 0, 100, 22 + dwell * 18);
+    p.strokeWeight(1);
+    p.circle(mx, my, baseR * 1.38);
+    p.noStroke();
+    p.fill(0, 0, 100, 38 + dwell * 35);
+    p.circle(mx, my, 3.2);
+    p.pop();
   }
 
   function spawn() {
@@ -59,7 +107,23 @@ window.motionSketches.flow = new p5((p) => {
     }
 
     dwell = 0;
+    stillStreak = 0;
     disperseTimer = DISPERSE_DURATION;
+
+    const add = burstSpawnCount();
+    for (let k = 0; k < add; k++) {
+      const ang = p.random(p.TWO_PI);
+      const ring = p.random() < 0.35 ? p.random(0.3, 1.8) : p.random(2, 14);
+      const spd = p.random(5, 26) + ring * 1.2;
+      particles.push({
+        x: px + p.cos(ang) * ring + p.random(-6, 6),
+        y: py + p.sin(ang) * ring + p.random(-6, 6),
+        vx: p.cos(ang) * spd * p.random(0.75, 1.35) + p.random(-2.5, 2.5),
+        vy: p.sin(ang) * spd * p.random(0.75, 1.35) + p.random(-2.5, 2.5),
+        hue: p.random(360),
+      });
+    }
+    trimParticlesToMax();
 
     for (let i = 0; i < particles.length; i++) {
       const o = particles[i];
@@ -68,10 +132,10 @@ window.motionSketches.flow = new p5((p) => {
       const d = p.sqrt(dx * dx + dy * dy) + 16;
       const u = dx / d;
       const v = dy / d;
-      const amp = 5.8 + 240 / d;
+      const amp = 7.2 + 280 / d;
       o.vx += u * amp * p.random(0.82, 1.18);
       o.vy += v * amp * p.random(0.82, 1.18);
-      o.hue = (o.hue + p.random(-28, 28) + 360) % 360;
+      o.hue = (o.hue + p.random(-40, 40) + 360) % 360;
     }
   }
 
@@ -87,6 +151,7 @@ window.motionSketches.flow = new p5((p) => {
     }
     pmouse.x = p.mouseX;
     pmouse.y = p.mouseY;
+    p.cursor("none");
   };
 
   p.draw = () => {
@@ -101,11 +166,18 @@ window.motionSketches.flow = new p5((p) => {
 
     if (disperseTimer <= 0) {
       if (ms < 1.4) {
-        dwell = p.min(dwell + 0.02, 1);
+        stillStreak = p.min(stillStreak + 1, 500);
+        const rate =
+          0.013 +
+          stillStreak * 0.0004 +
+          stillStreak * stillStreak * 0.0000011;
+        dwell = p.min(dwell + rate, 1);
       } else {
+        stillStreak = 0;
         dwell = p.max(dwell - (0.05 + ms * 0.01), 0);
       }
     } else {
+      stillStreak = 0;
       dwell = p.max(dwell - 0.08, 0);
     }
 
@@ -191,6 +263,8 @@ window.motionSketches.flow = new p5((p) => {
     p.fill(0, 0, 100, 1);
     p.rect(0, 0, p.width, p.height);
 
+    drawFlowCursor(mx, my);
+
     if (disperseTimer > 0) {
       disperseTimer -= 1;
     }
@@ -227,9 +301,7 @@ window.motionSketches.flow = new p5((p) => {
     while (particles.length < n) {
       particles.push(spawn());
     }
-    while (particles.length > n) {
-      particles.pop();
-    }
+    trimParticlesToMax();
     for (let i = 0; i < particles.length; i++) {
       particles[i].x = p.constrain(particles[i].x, 0, p.width);
       particles[i].y = p.constrain(particles[i].y, 0, p.height);
