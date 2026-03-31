@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1"
+    />
     <title>p5.js WebGL starter</title>
     <style>
       html,
@@ -28,6 +31,9 @@
         display: block;
         cursor: grab;
         touch-action: none;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
       }
       #p5-root.is-grabbing canvas {
         cursor: grabbing;

@@ -62,6 +62,9 @@ let spinVel;
 let camYaw = 0.55;
 let camPitch = -0.35;
 
+/** Two-finger drag: previous centroid for camera orbit (mobile). */
+let prevTouchMid = null;
+
 function cameraDistanceForViewport() {
   const h = Math.max(height, 1);
   const w = Math.max(width, 1);
@@ -91,6 +94,10 @@ function setup() {
     window.addEventListener("pointerup", () => setGrabbing(false));
     window.addEventListener("pointercancel", () => setGrabbing(false));
   }
+
+  window.addEventListener("orientationchange", () => {
+    setTimeout(() => resizeCanvas(windowWidth, windowHeight), 200);
+  });
 
   boxPos = createVector(0, 0, 0);
   boxPosPrev = boxPos.copy();
@@ -224,28 +231,67 @@ function resolveDonutInBox(boxVel, R) {
   pos.set(boxPos).add(mat3MulVec(R, pl));
 }
 
-function mouseDragged() {
+function applyDrag() {
   const shift = keyIsDown(16);
+  const dx = mouseX - pmouseX;
+  const dy = mouseY - pmouseY;
 
   if (mouseButton === LEFT) {
     if (shift) {
-      boxPos.x += (mouseX - pmouseX) * BOX_DRAG_XY;
-      boxPos.y += (mouseY - pmouseY) * BOX_DRAG_XY;
+      boxPos.x += dx * BOX_DRAG_XY;
+      boxPos.y += dy * BOX_DRAG_XY;
     } else {
-      boxRotY += (mouseX - pmouseX) * ROT_DRAG;
-      boxRotX += (mouseY - pmouseY) * ROT_DRAG;
+      boxRotY += dx * ROT_DRAG;
+      boxRotX += dy * ROT_DRAG;
     }
   }
 
   if (mouseButton === CENTER) {
-    boxRotZ += (mouseX - pmouseX) * ROLL_DRAG;
+    boxRotZ += dx * ROLL_DRAG;
   }
 
   if (mouseButton === RIGHT) {
-    camYaw += (mouseX - pmouseX) * 0.006;
-    camPitch += (mouseY - pmouseY) * 0.006;
+    camYaw += dx * 0.006;
+    camPitch += dy * 0.006;
     camPitch = constrain(camPitch, -PI / 2 + 0.15, PI / 2 - 0.15);
   }
+}
+
+function mouseDragged() {
+  applyDrag();
+}
+
+/** Mobile: p5 often does not run mouseDragged for touch; two fingers = orbit camera. */
+function touchMoved() {
+  if (touches.length >= 2) {
+    const midx = (touches[0].x + touches[1].x) / 2;
+    const midy = (touches[0].y + touches[1].y) / 2;
+    if (prevTouchMid !== null) {
+      camYaw += (midx - prevTouchMid.x) * 0.006;
+      camPitch += (midy - prevTouchMid.y) * 0.006;
+      camPitch = constrain(camPitch, -PI / 2 + 0.15, PI / 2 - 0.15);
+    }
+    prevTouchMid = { x: midx, y: midy };
+    return false;
+  }
+  prevTouchMid = null;
+
+  if (touches.length === 1) {
+    const dx = mouseX - pmouseX;
+    const dy = mouseY - pmouseY;
+    boxRotY += dx * ROT_DRAG;
+    boxRotX += dy * ROT_DRAG;
+  }
+  return false;
+}
+
+function touchStarted() {
+  prevTouchMid = null;
+  return false;
+}
+
+function touchEnded() {
+  prevTouchMid = null;
 }
 
 function mouseWheel(ev) {
