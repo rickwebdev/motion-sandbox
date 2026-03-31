@@ -33,23 +33,67 @@
     applySketches();
   }
 
-  function init() {
-    if (!window.motionSketches || !window.motionSketches.box || !window.motionSketches.waterfall) {
-      requestAnimationFrame(init);
-      return;
-    }
-    const prev = document.getElementById("carousel-prev");
-    const next = document.getElementById("carousel-next");
-    if (prev) prev.addEventListener("click", () => go(index - 1));
-    if (next) next.addEventListener("click", () => go(index + 1));
+  /**
+   * iOS Safari: nav taps are flaky; touchend + preventDefault is reliable.
+   * click covers mouse + keyboard. If both fire for one tap, skip duplicate click.
+   * Timeout clears skipClick if a synthetic click never arrives (e.g. hybrid use).
+   */
+  function bindNavControl(el, handler) {
+    if (!el) return;
+    let skipClick = false;
+    let skipTimer = null;
+    el.addEventListener(
+      "touchend",
+      (e) => {
+        e.preventDefault();
+        skipClick = true;
+        if (skipTimer) clearTimeout(skipTimer);
+        skipTimer = setTimeout(() => {
+          skipClick = false;
+          skipTimer = null;
+        }, 450);
+        handler();
+      },
+      { passive: false }
+    );
+    el.addEventListener("click", () => {
+      if (skipClick) {
+        skipClick = false;
+        if (skipTimer) {
+          clearTimeout(skipTimer);
+          skipTimer = null;
+        }
+        return;
+      }
+      handler();
+    });
+  }
+
+  function bindNav() {
+    bindNavControl(document.getElementById("carousel-prev"), () => go(index - 1));
+    bindNavControl(document.getElementById("carousel-next"), () => go(index + 1));
     document.querySelectorAll(".carousel-dot").forEach((dot) => {
-      dot.addEventListener("click", () => go(Number(dot.dataset.slide)));
+      const slide = Number(dot.dataset.slide);
+      bindNavControl(dot, () => go(slide));
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "ArrowLeft") go(index - 1);
       if (e.key === "ArrowRight") go(index + 1);
     });
+  }
+
+  function waitForSketches() {
+    if (window.motionSketches && window.motionSketches.box && window.motionSketches.waterfall) {
+      applySketches();
+      return;
+    }
+    requestAnimationFrame(waitForSketches);
+  }
+
+  function init() {
+    bindNav();
     go(0);
+    waitForSketches();
   }
 
   if (document.readyState === "loading") {

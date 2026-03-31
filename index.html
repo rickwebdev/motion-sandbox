@@ -20,6 +20,7 @@
         position: fixed;
         inset: 0;
         overflow: hidden;
+        z-index: 0;
       }
       .carousel-slide {
         position: absolute;
@@ -70,18 +71,16 @@
         bottom: 0;
         left: 0;
         right: 0;
-        z-index: 10;
+        z-index: 100;
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 0.75rem;
         padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
         background: linear-gradient(transparent, rgba(0, 0, 0, 0.55));
-        pointer-events: none;
-      }
-      .carousel-nav button,
-      .carousel-nav .carousel-dot {
         pointer-events: auto;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
       }
       .carousel-nav button {
         border: 1px solid rgba(255, 255, 255, 0.25);
@@ -89,10 +88,14 @@
         color: #e8e8ee;
         font-size: 1.35rem;
         line-height: 1;
-        width: 2.5rem;
-        height: 2.5rem;
+        min-width: 2.75rem;
+        min-height: 2.75rem;
+        width: 2.75rem;
+        height: 2.75rem;
         border-radius: 999px;
         cursor: pointer;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
       }
       .carousel-nav button:hover {
         background: rgba(55, 55, 65, 0.95);
@@ -103,17 +106,30 @@
         align-items: center;
       }
       .carousel-dot {
-        width: 0.55rem;
-        height: 0.55rem;
+        box-sizing: border-box;
+        min-width: 2.75rem;
+        min-height: 2.75rem;
+        width: 2.75rem;
+        height: 2.75rem;
         border-radius: 999px;
         border: none;
         padding: 0;
-        background: rgba(255, 255, 255, 0.35);
+        background: radial-gradient(
+          circle at center,
+          rgba(255, 255, 255, 0.35) 0 18%,
+          transparent 19%
+        );
         cursor: pointer;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
       }
       .carousel-dot.is-current {
-        background: rgba(130, 190, 255, 0.95);
-        transform: scale(1.25);
+        background: radial-gradient(
+          circle at center,
+          rgba(130, 190, 255, 0.95) 0 22%,
+          transparent 23%
+        );
+        transform: scale(1.08);
       }
       .carousel-label {
         font: 500 0.72rem system-ui, sans-serif;
