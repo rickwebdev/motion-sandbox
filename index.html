@@ -26,6 +26,31 @@
       /* Let p5 set canvas width/height in px — scaling here desyncs WebGL viewport from the framebuffer (scene stuck in a corner). */
       #p5-root canvas {
         display: block;
+        cursor: grab;
+        touch-action: none;
+      }
+      #p5-root.is-grabbing canvas {
+        cursor: grabbing;
+      }
+      @keyframes grab-invite {
+        0%,
+        100% {
+          outline-color: rgba(130, 190, 255, 0.1);
+        }
+        50% {
+          outline-color: rgba(130, 190, 255, 0.32);
+        }
+      }
+      #p5-root:not(.is-grabbing) canvas:hover {
+        outline: 1px solid rgba(130, 190, 255, 0.2);
+        outline-offset: -1px;
+        animation: grab-invite 2.4s ease-in-out infinite;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #p5-root:not(.is-grabbing) canvas:hover {
+          animation: none;
+          outline-color: rgba(130, 190, 255, 0.22);
+        }
       }
     </style>
   </head>

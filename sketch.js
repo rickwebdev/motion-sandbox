@@ -79,7 +79,18 @@ function setup() {
   /** 1:1 backing store ↔ CSS size so WEBGL viewport matches the full canvas (avoids top-left quadrant clipping on retina). */
   pixelDensity(1);
   angleMode(RADIANS);
-  if (cnv.elt) cnv.elt.oncontextmenu = () => false;
+  const canvasEl = cnv.elt;
+  if (canvasEl) canvasEl.oncontextmenu = () => false;
+
+  const root = document.getElementById("p5-root");
+  if (root && canvasEl) {
+    const setGrabbing = (on) => {
+      root.classList.toggle("is-grabbing", on);
+    };
+    canvasEl.addEventListener("pointerdown", () => setGrabbing(true));
+    window.addEventListener("pointerup", () => setGrabbing(false));
+    window.addEventListener("pointercancel", () => setGrabbing(false));
+  }
 
   boxPos = createVector(0, 0, 0);
   boxPosPrev = boxPos.copy();
