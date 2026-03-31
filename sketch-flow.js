@@ -5,6 +5,10 @@
  *
  * Disperse: double-click / double-tap, or Space — slams the swarm outward and injects
  * new colored particles that join the same physics and consolidate on hover (dwell resets).
+ *
+ * While the pointer moves, particles act “defensive”: repel from the path and cursor until
+ * you slow down; then dwell / consolidation behaves as before. A single click adds a short,
+ * mild defensive pulse (no movement required).
  */
 window.motionSketches = window.motionSketches || {};
 window.motionSketches.flow = new p5((p) => {
@@ -22,6 +26,8 @@ window.motionSketches.flow = new p5((p) => {
   let lastTapT = 0;
   let lastTapX = 0;
   let lastTapY = 0;
+  /** Decays each frame; single click refreshes — mild defensive without moving. */
+  let clickPulse = 0;
 
   function particleCount() {
     return p.width < 600 ? 2100 : 3600;
@@ -43,12 +49,12 @@ window.motionSketches.flow = new p5((p) => {
   }
 
   /** Soft gradient “brush” + rings; hue warms as dwell builds, pulses on disperse. */
-  function drawFlowCursor(mx, my) {
+  function drawFlowCursor(mx, my, defensive) {
     const burstPhase = disperseTimer / DISPERSE_DURATION;
     const pulse =
       disperseTimer > 0 ? 1 + 0.14 * p.sin(p.frameCount * 0.35) * burstPhase : 1;
-    const ch = (t * 38 + dwell * 95 + 195) % 360;
-    const baseR = 24 * pulse;
+    const ch = (t * 38 + dwell * (1 - defensive * 0.65) * 95 + 195 + defensive * 42) % 360;
+    const baseR = 24 * pulse * (1 - defensive * 0.18);
 
     p.push();
     p.noStroke();
@@ -59,12 +65,12 @@ window.motionSketches.flow = new p5((p) => {
       p.fill((ch + u * 18) % 360, 48 + dwell * 38, 100, a);
       p.circle(mx, my, rad * 2);
     }
-    p.stroke((ch + 35) % 360, 50 + dwell * 35, 100, 58 + dwell * 28);
-    p.strokeWeight(1.35);
+    p.stroke((ch + 35) % 360, 50 + dwell * 35 * (1 - defensive), 100, 58 + dwell * 28);
+    p.strokeWeight(1.35 + defensive * 0.45);
     p.noFill();
     p.circle(mx, my, baseR * 1.72);
-    p.stroke(0, 0, 100, 22 + dwell * 18);
-    p.strokeWeight(1);
+    p.stroke(0, 0, 100, 22 + dwell * 18 + defensive * 22);
+    p.strokeWeight(1 + defensive * 0.35);
     p.circle(mx, my, baseR * 1.38);
     p.noStroke();
     p.fill(0, 0, 100, 38 + dwell * 35);
@@ -158,11 +164,18 @@ window.motionSketches.flow = new p5((p) => {
     t += 0.008;
     const mx = p.mouseX;
     const my = p.mouseY;
-    const mdx = mx - pmouse.x;
-    const mdy = my - pmouse.y;
+    const prevX = pmouse.x;
+    const prevY = pmouse.y;
+    const mdx = mx - prevX;
+    const mdy = my - prevY;
     const ms = p.sqrt(mdx * mdx + mdy * mdy);
     pmouse.x = mx;
     pmouse.y = my;
+
+    const defensiveMove = p.pow(p.constrain((ms - 0.55) / 7.5, 0, 1), 0.82);
+    clickPulse *= 0.92;
+    if (clickPulse < 0.012) clickPulse = 0;
+    const defensive = p.min(1, defensiveMove + clickPulse * 0.52);
 
     if (disperseTimer <= 0) {
       if (ms < 1.4) {
@@ -189,9 +202,16 @@ window.motionSketches.flow = new p5((p) => {
 
     p.background(232, 26, 27);
 
-    const pull = (0.18 + dwell * dwell * 2.6) * pullDamp;
-    const swirlMix = p.lerp(0.92, 0.2, dwell) + (disperseTimer > 0 ? burst * 0.45 : 0);
-    const fieldMix = p.lerp(1, 0.25, dwell) + (disperseTimer > 0 ? burst * 0.35 : 0);
+    const pull =
+      (0.18 + dwell * dwell * 2.6) * pullDamp * (1 - defensive * 0.94);
+    const swirlMix =
+      (p.lerp(0.92, 0.2, dwell) + (disperseTimer > 0 ? burst * 0.45 : 0)) *
+      (1 - defensive * 0.55);
+    const fieldMix =
+      (p.lerp(1, 0.25, dwell) + (disperseTimer > 0 ? burst * 0.35 : 0)) *
+      (1 - defensive * 0.35);
+
+    const segLenSq = mdx * mdx + mdy * mdy;
 
     for (let i = 0; i < particles.length; i++) {
       const o = particles[i];
@@ -213,8 +233,31 @@ window.motionSketches.flow = new p5((p) => {
       ax += (-toY * inv) * 2.2 * falloff * swirlMix;
       ay += (toX * inv) * 2.2 * falloff * swirlMix;
       if (wake) {
-        ax += (mdx * 0.024 + mdy * 0.009) * falloff * swirlMix;
-        ay += (mdy * 0.024 - mdx * 0.009) * falloff * swirlMix;
+        ax += (mdx * 0.024 + mdy * 0.009) * falloff * swirlMix * (1 - defensive * 0.7);
+        ay += (mdy * 0.024 - mdx * 0.009) * falloff * swirlMix * (1 - defensive * 0.7);
+      }
+
+      if (defensive > 0.03 && disperseTimer <= 0) {
+        const fromX = o.x - mx;
+        const fromY = o.y - my;
+        const rd = p.sqrt(fromX * fromX + fromY * fromY) + 14;
+        const rep = defensive * (4.2 + ms * 0.14);
+        ax += (fromX / rd) * rep * falloff;
+        ay += (fromY / rd) * rep * falloff;
+
+        if (ms > 0.65 && segLenSq > 0.5) {
+          let tt = ((o.x - prevX) * mdx + (o.y - prevY) * mdy) / segLenSq;
+          tt = p.constrain(tt, 0, 1);
+          const qx = prevX + tt * mdx;
+          const qy = prevY + tt * mdy;
+          const sdx = o.x - qx;
+          const sdy = o.y - qy;
+          const sdd = p.sqrt(sdx * sdx + sdy * sdy) + 0.01;
+          const blade = p.map(sdd, 0, 58, 1, 0, true);
+          const cut = defensive * blade * (1.35 + ms * 0.045);
+          ax += (sdx / sdd) * cut;
+          ay += (sdy / sdd) * cut;
+        }
       }
 
       if (disperseTimer > 0) {
@@ -227,9 +270,16 @@ window.motionSketches.flow = new p5((p) => {
       }
 
       const maxSpeed =
-        disperseTimer > 0 ? 14 + burst * 4 : 5.2 + dwell * 2.2;
-      o.vx = p.lerp(o.vx, ax, 0.16 + dwell * 0.06);
-      o.vy = p.lerp(o.vy, ay, 0.16 + dwell * 0.06);
+        disperseTimer > 0
+          ? 14 + burst * 4
+          : 5.2 + dwell * 2.2 + defensive * 5.5;
+      const lerpT = p.constrain(
+        (0.16 + dwell * 0.06) * (1 - defensive * 0.5) + defensive * 0.1,
+        0.08,
+        0.32
+      );
+      o.vx = p.lerp(o.vx, ax, lerpT);
+      o.vy = p.lerp(o.vy, ay, lerpT);
       const vmag = p.sqrt(o.vx * o.vx + o.vy * o.vy);
       if (vmag > maxSpeed) {
         o.vx = (o.vx / vmag) * maxSpeed;
@@ -263,7 +313,7 @@ window.motionSketches.flow = new p5((p) => {
     p.fill(0, 0, 100, 1);
     p.rect(0, 0, p.width, p.height);
 
-    drawFlowCursor(mx, my);
+    drawFlowCursor(mx, my, defensive);
 
     if (disperseTimer > 0) {
       disperseTimer -= 1;
@@ -308,7 +358,17 @@ window.motionSketches.flow = new p5((p) => {
     }
   };
 
+  p.mousePressed = () => {
+    if (p.mouseButton === p.LEFT) {
+      clickPulse = p.max(clickPulse, 0.4);
+    }
+    return false;
+  };
+
   p.touchMoved = () => false;
-  p.touchStarted = () => false;
+  p.touchStarted = () => {
+    clickPulse = p.max(clickPulse, 0.4);
+    return false;
+  };
 }, "slide-flow");
 
