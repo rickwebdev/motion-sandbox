@@ -1,14 +1,24 @@
 /**
  * Flow — particles swarm the cursor; staying still builds “dwell” so the pull
  * consolidates into a tighter, brighter cluster.
+ *
+ * Disperse: double-click / double-tap, or Space — burst outward from the pointer,
+ * then swirl returns (dwell resets).
  */
 window.motionSketches = window.motionSketches || {};
 window.motionSketches.flow = new p5((p) => {
+  const DISPERSE_DURATION = 78;
   let particles = [];
   let pmouse = { x: 0, y: 0 };
   let t = 0;
   /** 0–1: how long the pointer has stayed roughly still (builds consolidation). */
   let dwell = 0;
+  /** Frames left in dispersal phase (repel + damped pull). */
+  let disperseTimer = 0;
+  let lastDispenseAt = 0;
+  let lastTapT = 0;
+  let lastTapX = 0;
+  let lastTapY = 0;
 
   function particleCount() {
     return p.width < 600 ? 1650 : 2900;
@@ -36,6 +46,35 @@ window.motionSketches.flow = new p5((p) => {
     );
   }
 
+  function triggerDisperse(cx, cy) {
+    const now = p.millis();
+    if (now - lastDispenseAt < 320) return;
+    lastDispenseAt = now;
+
+    let px = cx;
+    let py = cy;
+    if (px < 0 || px > p.width || py < 0 || py > p.height) {
+      px = p.constrain(p.mouseX, 0, p.width);
+      py = p.constrain(p.mouseY, 0, p.height);
+    }
+
+    dwell = 0;
+    disperseTimer = DISPERSE_DURATION;
+
+    for (let i = 0; i < particles.length; i++) {
+      const o = particles[i];
+      const dx = o.x - px;
+      const dy = o.y - py;
+      const d = p.sqrt(dx * dx + dy * dy) + 16;
+      const u = dx / d;
+      const v = dy / d;
+      const amp = 5.8 + 240 / d;
+      o.vx += u * amp * p.random(0.82, 1.18);
+      o.vy += v * amp * p.random(0.82, 1.18);
+      o.hue = (o.hue + p.random(-28, 28) + 360) % 360;
+    }
+  }
+
   p.setup = () => {
     const cnv = p.createCanvas(p.windowWidth, p.windowHeight, p.P2D);
     cnv.parent("slide-flow");
@@ -60,20 +99,27 @@ window.motionSketches.flow = new p5((p) => {
     pmouse.x = mx;
     pmouse.y = my;
 
-    if (ms < 1.4) {
-      dwell = p.min(dwell + 0.02, 1);
+    if (disperseTimer <= 0) {
+      if (ms < 1.4) {
+        dwell = p.min(dwell + 0.02, 1);
+      } else {
+        dwell = p.max(dwell - (0.05 + ms * 0.01), 0);
+      }
     } else {
-      dwell = p.max(dwell - (0.05 + ms * 0.01), 0);
+      dwell = p.max(dwell - 0.08, 0);
     }
 
     const touching = p.touches && p.touches.length > 0;
     const wake = touching || p.mouseIsPressed || ms > 0.25;
 
+    const burst = disperseTimer / DISPERSE_DURATION;
+    const pullDamp = disperseTimer > 0 ? 1 - p.pow(burst, 0.65) * 0.92 : 1;
+
     p.background(232, 26, 27);
 
-    const pull = 0.18 + dwell * dwell * 2.6;
-    const swirlMix = p.lerp(0.92, 0.2, dwell);
-    const fieldMix = p.lerp(1, 0.25, dwell);
+    const pull = (0.18 + dwell * dwell * 2.6) * pullDamp;
+    const swirlMix = p.lerp(0.92, 0.2, dwell) + (disperseTimer > 0 ? burst * 0.45 : 0);
+    const fieldMix = p.lerp(1, 0.25, dwell) + (disperseTimer > 0 ? burst * 0.35 : 0);
 
     for (let i = 0; i < particles.length; i++) {
       const o = particles[i];
@@ -99,7 +145,17 @@ window.motionSketches.flow = new p5((p) => {
         ay += (mdy * 0.024 - mdx * 0.009) * falloff * swirlMix;
       }
 
-      const maxSpeed = 5.2 + dwell * 2.2;
+      if (disperseTimer > 0) {
+        const fromX = o.x - mx;
+        const fromY = o.y - my;
+        const rd = p.sqrt(fromX * fromX + fromY * fromY) + 12;
+        const repel = burst * 7.2;
+        ax += (fromX / rd) * repel * falloff;
+        ay += (fromY / rd) * repel * falloff;
+      }
+
+      const maxSpeed =
+        disperseTimer > 0 ? 14 + burst * 4 : 5.2 + dwell * 2.2;
       o.vx = p.lerp(o.vx, ax, 0.16 + dwell * 0.06);
       o.vy = p.lerp(o.vy, ay, 0.16 + dwell * 0.06);
       const vmag = p.sqrt(o.vx * o.vx + o.vy * o.vy);
@@ -134,6 +190,35 @@ window.motionSketches.flow = new p5((p) => {
 
     p.fill(0, 0, 100, 1);
     p.rect(0, 0, p.width, p.height);
+
+    if (disperseTimer > 0) {
+      disperseTimer -= 1;
+    }
+  };
+
+  p.doubleClicked = () => {
+    triggerDisperse(p.mouseX, p.mouseY);
+    return false;
+  };
+
+  p.touchEnded = () => {
+    const now = p.millis();
+    const x = p.mouseX;
+    const y = p.mouseY;
+    if (now - lastTapT < 400 && p.dist(x, y, lastTapX, lastTapY) < 50) {
+      triggerDisperse(x, y);
+    }
+    lastTapT = now;
+    lastTapX = x;
+    lastTapY = y;
+    return false;
+  };
+
+  p.keyPressed = () => {
+    if (p.key === " " || p.key === "d" || p.key === "D") {
+      triggerDisperse(p.mouseX, p.mouseY);
+      return false;
+    }
   };
 
   p.windowResized = () => {
@@ -154,3 +239,4 @@ window.motionSketches.flow = new p5((p) => {
   p.touchMoved = () => false;
   p.touchStarted = () => false;
 }, "slide-flow");
+
