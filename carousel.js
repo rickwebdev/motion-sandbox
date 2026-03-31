@@ -14,6 +14,10 @@
       if (index === 1) ms.waterfall.loop();
       else ms.waterfall.noLoop();
     }
+    if (ms.flow) {
+      if (index === 2) ms.flow.loop();
+      else ms.flow.noLoop();
+    }
   }
 
   function go(n) {
@@ -83,7 +87,12 @@
   }
 
   function waitForSketches() {
-    if (window.motionSketches && window.motionSketches.box && window.motionSketches.waterfall) {
+    if (
+      window.motionSketches &&
+      window.motionSketches.box &&
+      window.motionSketches.waterfall &&
+      window.motionSketches.flow
+    ) {
       applySketches();
       return;
     }
